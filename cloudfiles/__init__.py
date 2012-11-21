@@ -8,7 +8,7 @@ Working with result sets:
                  api_key='1234567890')
     >>> conn = cloudfiles.get_connection('jsmith', '1234567890')
     >>> # NOTE: For Uk Customers please pass in Default UK Auth URL like EX
-    >>> conn = cloudfiles.get_connection('username', 'api_key', \ 
+    >>> conn = cloudfiles.get_connection('username', 'api_key', \
     >>>                                  authurl = cloudfiles.uk_authurl)
     >>> # This will force connectivity to the UK's Auth Service
     >>> containers = conn.get_all_containers()
@@ -76,6 +76,51 @@ Set the logs retention on CDN-enabled/public Container
 
 See COPYING for license information.
 """
+
+# Patch socket module to only resolve ipv4 connections
+def disable_ipv6():
+    import socket
+    def create_connection(address, timeout=socket._GLOBAL_DEFAULT_TIMEOUT,
+                      source_address=None):
+        """Connect to *address* and return the socket object.
+
+        Convenience function.  Connect to *address* (a 2-tuple ``(host,
+        port)``) and return the socket object.  Passing the optional
+        *timeout* parameter will set the timeout on the socket instance
+        before attempting to connect.  If no *timeout* is supplied, the
+        global default timeout setting returned by :func:`getdefaulttimeout`
+        is used.  If *source_address* is set it must be a tuple of (host, port)
+        for the socket to bind as a source address before making the connection.
+        An host of '' or port 0 tells the OS to use the default.
+        """
+
+        host, port = address
+        err = None
+        for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            sock = None
+            try:
+                sock = socket.socket(af, socktype, proto)
+                if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                    sock.settimeout(timeout)
+                if source_address:
+                    sock.bind(source_address)
+                sock.connect(sa)
+                return sock
+
+            except error as _:
+                err = _
+                if sock is not None:
+                    sock.close()
+
+            if err is not None:
+                raise err
+            else:
+                raise socket.error("getaddrinfo returns an empty list")
+    socket.create_connection = create_connection
+disable_ipv6()
+
+
 
 from cloudfiles.connection     import Connection, ConnectionPool
 from cloudfiles.container      import Container
